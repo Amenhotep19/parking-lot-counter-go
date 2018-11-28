@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"gocv.io/x/gocv"
 )
 
@@ -78,20 +81,371 @@ func (p *Perf) String() string {
 	return fmt.Sprintf("Car inference time: %.2f ms", p.CarNet)
 }
 
+// Direction is car direction
+type Direction int
+
+const (
+	// UP means car is moving up
+	UP Direction = iota + 1
+	// DOWN means car is moving down
+	DOWN
+	// LEFT means car is moving left
+	LEFT
+	// RIGHT means car is moving right
+	RIGHT
+	// STILL means car is not moving
+	STILL
+)
+
+// String implements fmt.Stringer for Direction
+func (d Direction) String() string {
+	switch d {
+	case UP:
+		return "UP"
+	case DOWN:
+		return "DOWN"
+	case LEFT:
+		return "LEFT"
+	case RIGHT:
+		return "RIGHT"
+	case STILL:
+		return "STIL"
+	default:
+		return "UNKNOWN"
+
+	}
+}
+
 // Centroid is car centroid
 type Centroid struct {
 	// ID is centroid ID
-	ID string
+	ID uuid.UUID
 	// Point is centeer point of the centroid
 	Point image.Point
 	// goneCount is number of frames centroid has been marked as gone
 	goneCount int
 }
 
+// String implements fmt.Stringer for Car
+func (c Centroid) String() string {
+	return fmt.Sprintf("%v", c.Point)
+}
+
+// Car is a tracked car
+type Car struct {
+	// ID is car ID
+	ID uuid.UUID
+	// Traject is car trajectory
+	Traject []image.Point
+	// Dir is car direction
+	Dir Direction
+	// counted is used to flag car as counted
+	counted bool
+	// gone is used to mark the car as gone
+	gone bool
+}
+
+// String implements fmt.Stringer for Car
+func (c Car) String() string {
+	return fmt.Sprintf("ID: %s, Trajectory: %v, Direction: %s", c.ID, c.Traject, c.Dir)
+}
+
+// MeanMovement calculates movement of the car along particular movement axis according to the entrance position.
+// Car movement is calculated as a mean value of all the previous poisitions of the car centroids.
+func (c Car) MeanMovement() float64 {
+	meanMov := 0.0
+
+	// if no trajectory yet, return 0.0
+	if len(c.Traject) == 0 {
+		return meanMov
+	}
+
+	for i := range c.Traject {
+		// if entrance is vertical i.e. car moves LEFT<->RIGHT only consider trajectory along X axis
+		if strings.EqualFold(entrance, "l") || strings.EqualFold(entrance, "r") {
+			meanMov = meanMov + float64(c.Traject[i].X)
+		}
+		// if entrance is horizontal i.e. car moves TOP<->BOTTOM only consider trajectory along Y axis
+		if strings.EqualFold(entrance, "b") || strings.EqualFold(entrance, "t") {
+			meanMov = meanMov + float64(c.Traject[i].Y)
+		}
+	}
+
+	return meanMov / float64(len(c.Traject))
+}
+
+// Direction calculates the direction of the car movement along particular movement axis based on entrance
+// as a difference between current car position p and its mean movement and returns it
+func (c Car) Direction(p image.Point) Direction {
+	meanMov := c.MeanMovement()
+
+	// if entrance is vertical i.e. car moves LEFT<->RIGHT only consider trajectory along X axis
+	if strings.EqualFold(entrance, "l") || strings.EqualFold(entrance, "r") {
+		if float64(p.X)-meanMov > 0 {
+			return RIGHT
+		}
+
+		return LEFT
+	}
+	// if entrance is horizontal i.e. car moves TOP<->BOTTOM only consider trajectory along Y axis
+	if strings.EqualFold(entrance, "b") || strings.EqualFold(entrance, "t") {
+		if float64(p.Y)-meanMov > 0 {
+			return DOWN
+		}
+
+		return UP
+	}
+
+	return STILL
+}
+
+// CarMap is a map of tracked cars
+type CarMap map[uuid.UUID]*Car
+
+// Add adds new car to the map of tracked cars tracked as centroid c.
+// It retruns bool to report if the addition was successful
+func (cm CarMap) Add(c *Centroid) bool {
+	traject := make([]image.Point, 0)
+	traject = append(traject, c.Point)
+
+	car := &Car{
+		ID:      c.ID,
+		Traject: traject,
+		Dir:     STILL,
+		counted: false,
+		gone:    false,
+	}
+
+	cm[c.ID] = car
+
+	return false
+}
+
+// Remove removes centroid with id
+func (cm CarMap) Remove(id uuid.UUID) {
+	delete(cm, id)
+}
+
+// Update updates tracked cars with centroids
+// Updated adds centroids that are not already tracked and updates already tracked cars
+func (cm CarMap) Update(centroids CentroidMap) {
+	// mark the cars which disappeared from centroids as gone
+	for id, _ := range cm {
+		if _, present := centroids[id]; !present {
+			cm[id].gone = true
+		}
+	}
+
+	// start tracking new centroids i.e. cars
+	for id, _ := range centroids {
+		if _, tracked := cm[id]; !tracked {
+			cm.Add(centroids[id])
+		} else {
+			car := cm[id]
+			// update car trajectory and direction
+			car.Traject = append(car.Traject, centroids[id].Point)
+			car.Dir = car.Direction(centroids[id].Point)
+		}
+	}
+}
+
+// ParkingLot is a parking lot
+type ParkingLot struct {
+	// TotalIn is a counter that counts cars entering the parking lot
+	TotalIn int
+	// TotalOut is a counter that counts cars leaving the parking lot
+	TotalOut int
+}
+
+// Update updates parking lot counters using the tracked cars.
+func (p *ParkingLot) Update(cars CarMap) {
+	// iterate through all cars and update global counters
+	for id, _ := range cars {
+		if !cars[id].counted {
+			if !cars[id].gone {
+				switch entrance {
+				case "t":
+					if cars[id].Dir == DOWN {
+						p.TotalIn++
+					}
+				case "l":
+					if cars[id].Dir == RIGHT {
+						p.TotalIn++
+					}
+				case "b":
+					if cars[id].Dir == UP {
+						p.TotalIn++
+					}
+				case "r":
+					if cars[id].Dir == LEFT {
+						p.TotalIn++
+					}
+				}
+				// mark the car as counted
+				cars[id].counted = true
+			} else {
+				switch entrance {
+				case "t":
+					if cars[id].Dir == UP {
+						p.TotalOut++
+					}
+				case "l":
+					if cars[id].Dir == LEFT {
+						p.TotalOut++
+					}
+				case "b":
+					if cars[id].Dir == DOWN {
+						p.TotalOut++
+					}
+				case "r":
+					if cars[id].Dir == RIGHT {
+						p.TotalOut++
+					}
+				}
+				// remove the car from tracked cars
+				cars.Remove(id)
+			}
+		} else {
+			if cars[id].gone {
+				cars.Remove(id)
+			}
+		}
+	}
+}
+
+// CentroidMap is a map of car centroids
+// It retruns bool based on whether the addition was susccessful or not
+type CentroidMap map[uuid.UUID]*Centroid
+
+// Add adds new centroid to centroind map using p
+// It retruns bool to report if the addition was successful
+func (cm CentroidMap) Add(p image.Point) bool {
+	// generates new UUID
+	ID := uuid.New()
+
+	c := &Centroid{
+		ID:        ID,
+		Point:     p,
+		goneCount: 0,
+	}
+
+	cm[ID] = c
+
+	return true
+}
+
+// Remove removes car with id from the map
+func (cm CentroidMap) Remove(id uuid.UUID) {
+	delete(cm, id)
+}
+
+// Update updates centroid map based on centerpoints
+func (cm CentroidMap) Update(points []image.Point) {
+	// if no points are passed in, increment gone count of all existing centroids and
+	// stop tracking the centroids which exceeded maxGone threshold
+	if len(points) == 0 {
+		for id, _ := range cm {
+			cm[id].goneCount++
+			if cm[id].goneCount > maxGone {
+				cm.Remove(id)
+			}
+		}
+
+		return
+	}
+
+	// mappedPoints keeps track of the points tha have been mapped to existing centroids
+	var mappedPoints map[int]image.Point
+	// updatedCentroids keeps track of the centroids that have been updated by points
+	var updatedCentroids map[uuid.UUID]*Centroid
+
+	// If no centroids are tracked yet, start tracking all new points
+	// Otherwise update existing centroids with new points locations
+	if len(cm) == 0 {
+		for i := range points {
+			cm.Add(points[i])
+		}
+	} else {
+		for i := range points {
+			id, dist := cm.ClosestDist(points[i])
+			// if the distance from the point to the closest centroid is too large,
+			// don't associate them together; also dont associate already associated points
+			_, alreadyMapped := mappedPoints[i]
+			if dist > float64(maxDist) || alreadyMapped {
+				continue
+			}
+			// update position of the closest centroid and reset its goneCount
+			cm[id].Point = points[i]
+			cm[id].goneCount = 0
+			// keep track of already mapped points and updated centroids
+			mappedPoints[i] = points[i]
+			updatedCentroids[id] = cm[id]
+		}
+	}
+
+	// iterate through all *already tracked* centroids and increment their goneCount if they werent updated
+	// if the centroid was NOT updated and it exceeded maxGone threshold, stop tracking it i.e. remove it
+	for id, _ := range cm {
+		if _, ok := updatedCentroids[id]; !ok {
+			cm[id].goneCount++
+			if cm[id].goneCount > maxGone {
+				cm.Remove(id)
+			}
+		}
+	}
+
+	// iterate through points and start tracking the points that are NOT yet mapped to
+	// any of the already tracked centroids i.e. add them in
+	for i := range points {
+		if _, ok := mappedPoints[i]; !ok {
+			cm.Add(points[i])
+		}
+	}
+
+	return
+}
+
+// ClosestDist finds the closest centroid to p and returns both its ID and distance from p.
+// ClosestDist uses euclidean distance as a measure of closeness.
+func (cm CentroidMap) ClosestDist(p image.Point) (uuid.UUID, float64) {
+	var minID uuid.UUID
+	minDist := math.MaxFloat64
+
+	for id, _ := range cm {
+		// If entrance is vertical: the movement is LEFT<->RIGHT, only consider centroids with
+		// some small Y coordinate fluctuation as Y coordinate should not be changing much
+		if strings.EqualFold(entrance, "l") || strings.EqualFold(entrance, "r") {
+			if cm[id].Point.Y < (p.Y-70) || cm[id].Point.Y > (p.Y+70) {
+				continue
+			}
+		}
+		// If entrance is horizontal: the movement is TOP<->BOTTOM, only consider centroids with
+		// some small X coordinate fluctuation as X coordinate should not be changing much
+		if strings.EqualFold(entrance, "b") || strings.EqualFold(entrance, "t") {
+			if cm[id].Point.X < (p.X-50) || cm[id].Point.X > (p.X+50) {
+				continue
+			}
+		}
+
+		dx := float64(cm[id].Point.X - p.X)
+		dy := float64(cm[id].Point.Y - p.Y)
+		dist := math.Sqrt(dx*dx + dy*dy)
+
+		if dist < minDist {
+			minDist = dist
+			minID = id
+		}
+	}
+
+	return minID, minDist
+}
+
 // Result is monitoring computation result returned to main goroutine
 type Result struct {
-	// Centroids are current car centroids
-	Centroids []*Centroid
+	// Perf is inference engine performance
+	Perf *Perf
+	// Centroids is a map of car centroids
+	Centroids CentroidMap
 	// CarsIn is a counter for cars entering the parking lot
 	CarsIn int
 	// CarsOut is a counter for cars leaving the parking lot
@@ -227,7 +581,16 @@ func extractCenterPoints(cars []image.Rectangle, img *gocv.Mat) []image.Point {
 // frameRunner reads image frames from framesChan and performs face and sentiment detections on them
 // doneChan is used to receive a signal from the main goroutine to notify frameRunner to stop and return
 func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan chan<- *Result,
-	perfChan chan<- *Perf, pubChan chan<- *Result, carNet *gocv.Net) error {
+	pubChan chan<- *Result, carNet *gocv.Net) error {
+
+	// perf is inference engine performance
+	perf := new(Perf)
+	// centroid keeps the list of all tracked centroids
+	centroids := make(CentroidMap)
+	// cars keeps the list of all tracked cars
+	cars := make(CarMap)
+	// parkingLot is parking lot
+	parkLot := new(ParkingLot)
 
 	for {
 		select {
@@ -239,19 +602,29 @@ func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan
 			img := gocv.NewMat()
 			frame.img.CopyTo(&img)
 
-			// detect cars and return them
-			cars := detectCars(carNet, &img)
-			// extract car center points: not all car detections are valid
-			centerPoints := extractCenterPoints(cars, &img)
+			// detect cars in the current frame
+			carRects := detectCars(carNet, &img)
+			// extract car center points: not all car detections are valid cars
+			points := extractCenterPoints(carRects, &img)
 
-			// TODO: implement the centroid updates functions
-			fmt.Println(centerPoints)
+			// update tracked centroids with the points detected in the frame
+			centroids.Update(points)
+
+			// update tracked cars based on centroids
+			cars.Update(centroids)
+
+			// update parking lot counters
+			parkLot.Update(cars)
 
 			// detection result
-			result := &Result{}
+			result := &Result{
+				Perf:      perf,
+				Centroids: centroids,
+				CarsIn:    parkLot.TotalIn,
+				CarsOut:   parkLot.TotalOut,
+			}
 
 			// send data down the channels
-			perfChan <- getPerformanceInfo(carNet)
 			resultsChan <- result
 			if pubChan != nil {
 				pubChan <- result
@@ -409,7 +782,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		errChan <- frameRunner(framesChan, doneChan, resultsChan, perfChan, pubChan, carNet)
+		errChan <- frameRunner(framesChan, doneChan, resultsChan, pubChan, carNet)
 	}()
 
 	// open display window
@@ -455,7 +828,13 @@ monitor:
 		// inference results label
 		gocv.PutText(&img, fmt.Sprintf("%s", result), image.Point{0, 45},
 			gocv.FontHersheySimplex, 0.5, color.RGBA{255, 255, 255, 0}, 2)
-		// TODO: Draw car centroids
+		// Draw car centroids and label them with coordinates
+		for id, _ := range result.Centroids {
+			gocv.Circle(&img, result.Centroids[id].Point, 5, color.RGBA{0, 255, 0, 0}, 2)
+			gocv.PutText(&img, fmt.Sprintf("%s", result.Centroids[id]),
+				image.Point{X: result.Centroids[id].Point.X + 5, Y: result.Centroids[id].Point.Y},
+				gocv.FontHersheySimplex, 0.5, color.RGBA{0, 255, 0, 0}, 2)
+		}
 		// show the image in the window, and wait 1 millisecond
 		window.IMShow(img)
 
@@ -463,6 +842,12 @@ monitor:
 		if window.WaitKey(int(delay)) >= 27 {
 			break monitor
 		}
+	}
+	// unblock resultsChan if necessary
+	select {
+	case <-resultsChan:
+	default:
+		// resultsChan was empty, proceed
 	}
 	// signal all goroutines to finish
 	close(doneChan)

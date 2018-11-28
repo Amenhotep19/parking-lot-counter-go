@@ -8,6 +8,10 @@ required = ["gocv.io/x/gocv/openvino"]
   name = "github.com/eclipse/paho.mqtt.golang"
   version = "1.1.1"
 
+[[constraint]]
+  name = "github.com/google/uuid"
+  version = "v1.1.0"
+
 [prune]
   go-tests = true
   unused-packages = true
