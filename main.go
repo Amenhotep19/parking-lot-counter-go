@@ -63,8 +63,8 @@ func init() {
 	flag.IntVar(&target, "target", 0, "Target device. 0: CPU, 1: OpenCL, 2: OpenCL half precision, 3: VPU")
 
 	flag.StringVar(&entrance, "entrance", "b", "Plane axis for parking entrance and exit division mark. b: Bottom frame, t: Top frame, l: Left frame, r: Right frame")
-	flag.IntVar(&maxDist, "max-dist", 200, "Max distance in pixels between two centroids to be considered the same")
-	flag.IntVar(&maxGone, "max-gone", 25, "Max number of frames to track the centroid which doesnt change to be considered gone")
+	flag.IntVar(&maxDist, "max-dist", 300, "Max distance in pixels between two centroids to be considered the same")
+	flag.IntVar(&maxGone, "max-gone", 30, "Max number of frames to track the centroid which doesnt change to be considered gone")
 	flag.BoolVar(&publish, "publish", false, "Publish data analytics to a remote server")
 	flag.IntVar(&rate, "rate", 1, "Number of seconds between analytics are sent to a remote server")
 	flag.Float64Var(&delay, "delay", 5.0, "Video playback delay")
@@ -180,8 +180,6 @@ func (c Car) MeanMovement() float64 {
 func (c Car) Direction(p image.Point) Direction {
 	meanMov := c.MeanMovement()
 
-	fmt.Printf("Car ID: %v MeanMovement: %d Point: %v\n", c.ID, int(meanMov), p)
-
 	// if entrance is vertical i.e. car moves LEFT<->RIGHT only consider trajectory along X axis
 	if strings.EqualFold(entrance, "l") || strings.EqualFold(entrance, "r") {
 		if p.X-int(meanMov) > 0 {
@@ -224,8 +222,6 @@ func (cm CarMap) Add(c *Centroid) bool {
 		gone:    false,
 	}
 
-	fmt.Printf("Adding car ID: %v\n", car.ID)
-
 	cm[c.ID] = car
 
 	return false
@@ -233,8 +229,6 @@ func (cm CarMap) Add(c *Centroid) bool {
 
 // Remove removes centroid with id
 func (cm CarMap) Remove(id uuid.UUID) {
-	fmt.Printf("Removing car ID: %v\n", id)
-
 	delete(cm, id)
 }
 
@@ -245,10 +239,8 @@ func (cm CarMap) Update(centroids CentroidMap) {
 	for id, _ := range cm {
 		if _, present := centroids[id]; !present {
 			if cm[id].gone && cm[id].Dir == STILL {
-				fmt.Printf("Car ID: %v is gone and %v\n", id, cm[id].Dir)
 				cm.Remove(id)
 			} else {
-				fmt.Printf("Marking car ID: %v as gone\n", id)
 				cm[id].gone = true
 			}
 		}
@@ -261,7 +253,6 @@ func (cm CarMap) Update(centroids CentroidMap) {
 		} else {
 			cm[id].Traject = append(cm[id].Traject, centroids[id].Point)
 			cm[id].Dir = cm[id].Direction(centroids[id].Point)
-			fmt.Printf("Updated car: %v\n", cm[id])
 		}
 	}
 }
@@ -279,7 +270,6 @@ func (p *ParkingLot) Update(cars CarMap) {
 	// iterate through all cars and update global counters
 	for id, _ := range cars {
 		if !cars[id].counted {
-			fmt.Printf("Car: %s, Gone: %v, Counted: %v\n", cars[id], cars[id].gone, cars[id].counted)
 			if !cars[id].gone {
 				switch entrance {
 				case "t":
@@ -349,8 +339,6 @@ func (cm CentroidMap) Add(p image.Point) bool {
 		goneCount: 0,
 	}
 
-	fmt.Printf("Adding centroid ID: %v, Point: %v\n", ID, p)
-
 	cm[ID] = c
 
 	return true
@@ -358,8 +346,6 @@ func (cm CentroidMap) Add(p image.Point) bool {
 
 // Remove removes centroid with id from centroid map.
 func (cm CentroidMap) Remove(id uuid.UUID) {
-	fmt.Printf("Removing centroid ID: %v\n", id)
-
 	delete(cm, id)
 }
 
@@ -371,7 +357,6 @@ func (cm CentroidMap) Update(points []image.Point) {
 		for id, _ := range cm {
 			cm[id].goneCount++
 			if cm[id].goneCount > maxGone {
-				fmt.Printf("No new points, gone count reached\n")
 				cm.Remove(id)
 			}
 		}
@@ -405,7 +390,6 @@ func (cm CentroidMap) Update(points []image.Point) {
 			// keep track of already mapped points and updated centroids
 			mappedPoints[i] = points[i]
 			updatedCentroids[id] = cm[id]
-			fmt.Printf("Updated centroid: %v\n", id)
 		}
 
 		// iterate through already tracked centroids and increment their goneCount if they werent updated
@@ -414,7 +398,6 @@ func (cm CentroidMap) Update(points []image.Point) {
 			if _, ok := updatedCentroids[id]; !ok {
 				cm[id].goneCount++
 				if cm[id].goneCount > maxGone {
-					fmt.Printf("Gone count reached\n")
 					cm.Remove(id)
 				}
 			}
@@ -573,7 +556,7 @@ func extractCenterPoints(rects []image.Rectangle, img *gocv.Mat) []image.Point {
 		width = rects[i].Size().X
 		height = rects[i].Size().Y
 		// if detected car rectangle is too small, skip it
-		if width < 70 || height < 70 {
+		if width < 80 || height < 50 {
 			continue
 		}
 
@@ -611,6 +594,8 @@ func extractCenterPoints(rects []image.Rectangle, img *gocv.Mat) []image.Point {
 func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan chan<- *Result,
 	pubChan chan<- *Result, carNet *gocv.Net) error {
 
+	// frame is image frame
+	frame := new(frame)
 	// result stores results to be sent down to main goroutine
 	result := new(Result)
 	// perf is inference engine performance
@@ -626,8 +611,17 @@ func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan
 		select {
 		case <-doneChan:
 			fmt.Printf("Stopping frameRunner: received stop sginal\n")
+			// close results channel
+			close(resultsChan)
+			// close publish channel
+			if pubChan != nil {
+				close(pubChan)
+			}
 			return nil
-		case frame := <-framesChan:
+		case frame = <-framesChan:
+			if frame == nil {
+				continue
+			}
 			// let's make a copy of the original
 			img := gocv.NewMat()
 			frame.img.CopyTo(&img)
@@ -637,10 +631,6 @@ func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan
 
 			// extract car center points: not all car detections are valid cars
 			centerPoints := extractCenterPoints(carRects, &img)
-
-			if len(centerPoints) != 0 {
-				fmt.Printf("CenterPoints: %v\n", centerPoints)
-			}
 
 			// update tracked centroids with the points detected in the frame
 			centroids.Update(centerPoints)
@@ -874,14 +864,12 @@ monitor:
 			break monitor
 		}
 	}
-	// unblock resultsChan if necessary
-	select {
-	case <-resultsChan:
-	default:
-		// resultsChan was empty, proceed
-	}
 	// signal all goroutines to finish
+	close(framesChan)
 	close(doneChan)
+	for range resultsChan {
+		// collect any outstanding results
+	}
 	// wait for all goroutines to finish
 	wg.Wait()
 }
