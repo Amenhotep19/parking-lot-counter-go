@@ -1,5 +1,4 @@
-/*
-* Copyright (c) 2018 Intel Corporation.
+/* * Copyright (c) 2018 Intel Corporation.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -455,7 +454,7 @@ func (cm CentroidMap) ClosestDist(p image.Point) (uuid.UUID, float64) {
 		// If entrance is horizontal: the movement is TOP<->BOTTOM, only consider centroids with
 		// some small X coordinate fluctuation as X coordinate should not be changing much
 		if strings.EqualFold(entrance, "b") || strings.EqualFold(entrance, "t") {
-			if (cm[id].Point.X < (p.X - 50)) || (cm[id].Point.X > (p.X + 50)) {
+			if (cm[id].Point.X < (p.X - 80)) || (cm[id].Point.X > (p.X + 80)) {
 				continue
 			}
 		}
@@ -548,11 +547,13 @@ func detectCars(net *gocv.Net, img *gocv.Mat) []image.Rectangle {
 	for i := 0; i < results.Total(); i += 7 {
 		confidence := results.GetFloatAt(0, i+2)
 		if float64(confidence) > modelConfidence {
+			//fmt.Printf("CONFIDENCE: %.2f\n", confidence)
 			left := int(results.GetFloatAt(0, i+3) * float32(img.Cols()))
 			top := int(results.GetFloatAt(0, i+4) * float32(img.Rows()))
 			right := int(results.GetFloatAt(0, i+5) * float32(img.Cols()))
 			bottom := int(results.GetFloatAt(0, i+6) * float32(img.Rows()))
 			cars = append(cars, image.Rect(left, top, right, bottom))
+			//fmt.Printf("RECTANGLE: %v\n", image.Rect(left, top, right, bottom))
 		}
 	}
 
@@ -572,12 +573,15 @@ func extractCenterPoints(rects []image.Rectangle, img *gocv.Mat) []image.Point {
 	// make sure the car rect is completely inside the image frame
 	for i := range rects {
 		if !rects[i].In(image.Rect(0, 0, img.Cols(), img.Rows())) {
+			//fmt.Println("SKIPPING: ", rects[i])
 			continue
 		}
 
 		// detected car rectangle dimensions
 		width = rects[i].Size().X
 		height = rects[i].Size().Y
+		//fmt.Println("ORIG WIDTH: ", width, "ORIG HEIGHT: ", height)
+
 		// if detected car rectangle is too small, skip it
 		if width < 80 || height < 50 {
 			continue
@@ -589,6 +593,10 @@ func extractCenterPoints(rects []image.Rectangle, img *gocv.Mat) []image.Point {
 		if width > wClip {
 			if (rects[i].Min.X + wClip) < img.Cols() {
 				width = wClip
+				// we shift the top left point by 1/4 width clip i.e. left
+				if (rects[i].Min.X - width/4) > 0 {
+					rects[i].Min.X = rects[i].Min.X - width/4
+				}
 			}
 		} else if (rects[i].Min.X + width) > img.Cols() {
 			width = img.Cols() - rects[i].Min.X
@@ -597,14 +605,21 @@ func extractCenterPoints(rects []image.Rectangle, img *gocv.Mat) []image.Point {
 		if height > hClip {
 			if (rects[i].Min.Y + hClip) < img.Rows() {
 				height = hClip
+				// we shift the bottom right point by 1/4 height clip i.e. up
+				if (rects[i].Min.Y - hClip/4) > 0 {
+					rects[i].Min.Y = rects[i].Min.Y - hClip/4
+				}
 			}
 		} else if (rects[i].Min.Y + height) > img.Rows() {
 			height = img.Rows() - rects[i].Min.Y
 		}
 
+		//fmt.Println("UPDATED WIDTH: ", width, "UPDATED HEIGHT: ", height)
 		// center point coordinates
 		X = rects[i].Min.X + width/2
 		Y = rects[i].Min.Y + height/2
+
+		//fmt.Println("CenterX:", X, "CenterY:", Y)
 
 		centerPoints = append(centerPoints, image.Point{X: X, Y: Y})
 	}
