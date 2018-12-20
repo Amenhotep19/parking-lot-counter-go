@@ -9,7 +9,7 @@ PACKAGES=$(shell go list ./... )
 all: test build
 
 build: dir
-	go build -tags openvino -o "$(BUILDPATH)/monitor"
+	go build -tags openvino -o "$(BUILDPATH)/counter"
 
 dir:
 	mkdir -p $(BUILDPATH)
