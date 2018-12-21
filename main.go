@@ -404,9 +404,8 @@ func (cm CentroidMap) Update(points []image.Point) {
 		for i := range points {
 			id, dist := cm.ClosestDist(points[i])
 			// if the distance from the point to the closest centroid is too large,
-			// don't associate them together; also dont associate already associated points
-			_, alreadyMapped := mappedPoints[i]
-			if (dist > float64(maxDist)) || alreadyMapped {
+			// don't associate them together
+			if dist > float64(maxDist) {
 				continue
 			}
 			// update position of the closest centroid and reset its goneCount
