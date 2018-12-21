@@ -73,6 +73,8 @@ var (
 	rate int
 	// delay is video playback delay
 	delay float64
+	// filter is should we perform extra image erode filtering on video source
+	filter bool
 )
 
 func init() {
@@ -90,6 +92,7 @@ func init() {
 	flag.BoolVar(&publish, "publish", false, "Publish data analytics to a remote server")
 	flag.IntVar(&rate, "rate", 1, "Number of seconds between analytics are sent to a remote server")
 	flag.Float64Var(&delay, "delay", 5.0, "Video playback delay")
+	flag.BoolVar(&filter, "filter", false, "Perform erode filtering on video source before processing")
 }
 
 // Perf stores inference engine performance info
@@ -258,7 +261,7 @@ func (cm CarMap) Remove(id uuid.UUID) {
 // It updates tracking info of the tracked centroids and starts tracking new centroids.
 func (cm CarMap) Update(centroids CentroidMap) {
 	// mark the cars which disappeared from centroids as gone
-	for id, _ := range cm {
+	for id := range cm {
 		if _, present := centroids[id]; !present {
 			if cm[id].gone && cm[id].Dir == STILL {
 				cm.Remove(id)
@@ -269,7 +272,7 @@ func (cm CarMap) Update(centroids CentroidMap) {
 	}
 
 	// start tracking new centroids i.e. cars
-	for id, _ := range centroids {
+	for id := range centroids {
 		if _, tracked := cm[id]; !tracked {
 			cm.Add(centroids[id])
 		} else {
@@ -290,7 +293,7 @@ type ParkingLot struct {
 // Update updates parking lot counters using the tracked cars.
 func (p *ParkingLot) Update(cars CarMap) {
 	// iterate through all cars and update global counters
-	for id, _ := range cars {
+	for id := range cars {
 		if !cars[id].counted {
 			if !cars[id].gone {
 				switch entrance {
@@ -376,7 +379,7 @@ func (cm CentroidMap) Update(points []image.Point) {
 	// if no points are passed in, increment gone count of all existing centroids and
 	// stop tracking the centroids which exceeded maxGone threshold
 	if len(points) == 0 {
-		for id, _ := range cm {
+		for id := range cm {
 			cm[id].goneCount++
 			if cm[id].goneCount > maxGone {
 				cm.Remove(id)
@@ -416,7 +419,7 @@ func (cm CentroidMap) Update(points []image.Point) {
 
 		// iterate through already tracked centroids and increment their goneCount if they werent updated
 		// if the centroid was NOT updated and it exceeds maxGone threshold, stop tracking it
-		for id, _ := range cm {
+		for id := range cm {
 			if _, ok := updatedCentroids[id]; !ok {
 				cm[id].goneCount++
 				if cm[id].goneCount > maxGone {
@@ -443,7 +446,7 @@ func (cm CentroidMap) ClosestDist(p image.Point) (uuid.UUID, float64) {
 	var minID uuid.UUID
 	minDist := math.MaxFloat64
 
-	for id, _ := range cm {
+	for id := range cm {
 		// If entrance is vertical: the movement is LEFT<->RIGHT, only consider centroids with
 		// some small Y coordinate fluctuation as Y coordinate should not be changing much
 		if strings.EqualFold(entrance, "l") || strings.EqualFold(entrance, "r") {
@@ -527,8 +530,6 @@ func messageRunner(doneChan <-chan struct{}, pubChan <-chan *Result, c *MQTTClie
 			return nil
 		}
 	}
-
-	return nil
 }
 
 // detectCars detects cars in img and returns them as a slice of rectangles that encapsulates them
@@ -547,13 +548,11 @@ func detectCars(net *gocv.Net, img *gocv.Mat) []image.Rectangle {
 	for i := 0; i < results.Total(); i += 7 {
 		confidence := results.GetFloatAt(0, i+2)
 		if float64(confidence) > modelConfidence {
-			//fmt.Printf("CONFIDENCE: %.2f\n", confidence)
 			left := int(results.GetFloatAt(0, i+3) * float32(img.Cols()))
 			top := int(results.GetFloatAt(0, i+4) * float32(img.Rows()))
 			right := int(results.GetFloatAt(0, i+5) * float32(img.Cols()))
 			bottom := int(results.GetFloatAt(0, i+6) * float32(img.Rows()))
 			cars = append(cars, image.Rect(left, top, right, bottom))
-			//fmt.Printf("RECTANGLE: %v\n", image.Rect(left, top, right, bottom))
 		}
 	}
 
@@ -573,14 +572,12 @@ func extractCenterPoints(rects []image.Rectangle, img *gocv.Mat) []image.Point {
 	// make sure the car rect is completely inside the image frame
 	for i := range rects {
 		if !rects[i].In(image.Rect(0, 0, img.Cols(), img.Rows())) {
-			//fmt.Println("SKIPPING: ", rects[i])
 			continue
 		}
 
 		// detected car rectangle dimensions
 		width = rects[i].Size().X
 		height = rects[i].Size().Y
-		//fmt.Println("ORIG WIDTH: ", width, "ORIG HEIGHT: ", height)
 
 		// if detected car rectangle is too small, skip it
 		if width < 80 || height < 50 {
@@ -614,12 +611,9 @@ func extractCenterPoints(rects []image.Rectangle, img *gocv.Mat) []image.Point {
 			height = img.Rows() - rects[i].Min.Y
 		}
 
-		//fmt.Println("UPDATED WIDTH: ", width, "UPDATED HEIGHT: ", height)
 		// center point coordinates
 		X = rects[i].Min.X + width/2
 		Y = rects[i].Min.Y + height/2
-
-		//fmt.Println("CenterX:", X, "CenterY:", Y)
 
 		centerPoints = append(centerPoints, image.Point{X: X, Y: Y})
 	}
@@ -644,6 +638,8 @@ func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan
 	cars := make(CarMap)
 	// parkingLot is the parking lot we are monitoring
 	parkingLot := new(ParkingLot)
+	// kernel to use for erode filtering, if enabled
+	kernel := gocv.GetStructuringElement(gocv.MorphRect, image.Pt(12, 12))
 
 	for {
 		select {
@@ -663,6 +659,11 @@ func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan
 			// let's make a copy of the original
 			img := gocv.NewMat()
 			frame.img.CopyTo(&img)
+
+			// erode filter to cleanup fuzzy cameras
+			if filter {
+				gocv.Erode(img, &img, kernel)
+			}
 
 			// detect cars in the current frame
 			carRects := detectCars(carNet, &img)
@@ -696,8 +697,6 @@ func frameRunner(framesChan <-chan *frame, doneChan <-chan struct{}, resultsChan
 			img.Close()
 		}
 	}
-
-	return nil
 }
 
 func parseCliFlags() error {
@@ -888,7 +887,7 @@ monitor:
 		gocv.PutText(&img, fmt.Sprintf("%s", result), image.Point{0, 45},
 			gocv.FontHersheySimplex, 0.5, color.RGBA{255, 255, 255, 0}, 2)
 		// Draw car centroids and label them with coordinates
-		for id, _ := range result.Centroids {
+		for id := range result.Centroids {
 			gocv.Circle(&img, result.Centroids[id].Point, 5, color.RGBA{0, 255, 0, 0}, 2)
 			gocv.PutText(&img, fmt.Sprintf("%s", result.Centroids[id]),
 				image.Point{X: result.Centroids[id].Point.X + 5, Y: result.Centroids[id].Point.Y},

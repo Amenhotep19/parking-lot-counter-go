@@ -167,6 +167,8 @@ To control the car detection DNN confidence level use the `-model-confidence` fl
 
 The calculations made to track movement using centroids have two parameters that can be set via flags. `-max-dist` set the maximum distance in pixels between two related centroids. In other words how big of a distance of movement between frames show be allowed before assuming that the object is a different vehicle. `-max-gone` is the maximum number of frames to track a centroid which doesn't change, possibly due to being a parked vehicle.
 
+You can also use an erode filter to perform image cleanup before the DNN processing takes place. The `-filter=true` flag will turn on this feature.
+
 ### Hardware Acceleration
 
 This application can take advantage of the hardware acceleration in the Intel® Distribution of OpenVINO™ toolkit by using the `-backend` and `-target` parameters.
@@ -191,7 +193,7 @@ To run the code using the VPU, you have to set the `-target` flag to `3` and als
 
 ## Sample Videos
 
-There are several videos available to use as sample videos to show the capabilities of this application. You can download them by running these commands from the `parking-lot-counter-cpp` directory:
+There are several videos available to use as sample videos to show the capabilities of this application. You can download them by running these commands from the `parking-lot-counter-go` directory:
 
 ```shell
 mkdir resources
@@ -200,14 +202,14 @@ wget https://github.com/intel-iot-devkit/sample-videos/raw/master/car-detection.
 cd ..
 ```
 
-To then execute the code using one of these sample videos, run the following commands from the `parking-lot-counter-cpp` directory:
+To then execute the code using one of these sample videos, run the following commands from the `parking-lot-counter-go` directory:
 
 ```shell
 cd build
-./counter -model=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.bin -model-config=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.xml -backend=2 -target=1 -input=../resources/car-detection.mp4 -entrance="b" -model-confidence=0.65
+./counter -model=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.bin -model-config=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.xml -backend=2 -target=1 -input=../resources/car-detection.mp4 -entrance="t" -model-confidence=0.7 -filter=true
 ```
 
-The above command will use the bottom edge of the video stream frame as parking lot entrance and will count the cars driving up the frame as the cars entering the parking lot and the cars driving down the frame as the cars leaving the parking lot. The application displays in real time how many cars have entered and exited the parking lot.
+The above command will use the top edge of the video stream frame as parking lot entrance and will count the cars driving up the frame as the cars entering the parking lot and the cars driving down the frame as the cars leaving the parking lot. It also uses the `-filter=true` to enable the erode filter on the video images before processing. The application displays in real time how many cars have entered and exited the parking lot.
 
 ## Machine to Machine Messaging with MQTT
 
