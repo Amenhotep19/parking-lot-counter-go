@@ -3,14 +3,14 @@
 | Details            |              |
 |-----------------------|---------------|
 | Target OS:            |  Ubuntu\* 16.04 LTS   |
-| Programming Language: |  Go |
+| Programming Language: |  Google Go* programming language |
 | Time to Complete:     |  45 min     |
 
 ![app image](./images/parking-lot-counter.png)
 
 ## Introduction
 
-This parking lot counter application is one of a series of reference implementations for Computer Vision (CV) using the Intel® Distribution of OpenVINO™ toolkit written in the Go programming language. This application is designed for a parking space area mounted camera which counts available parking space by tracking the number of vehicles entering and leaving the parking space area.
+This parking lot counter application is one of a series of reference implementations for Computer Vision (CV) using the Intel® Distribution of OpenVINO™ toolkit written in the Go* programming language. This application is designed for a parking space area mounted camera which counts available parking space by tracking the number of vehicles entering and leaving the parking space area.
 
 ## Requirements
 
@@ -33,36 +33,35 @@ uname -a
 
 ## Setup
 
-### Install OpenVINO™ Toolkit
+### InstallIntel® Distribution of OpenVINO™ toolkit
 
-Refer to https://software.intel.com/en-us/articles/OpenVINO-Install-Linux for more information about how to install and setup the Intel® Distribution of OpenVINO™ toolkit.
+Refer to [Install the Intel® Distribution of OpenVINO™ toolkit for Linux*](https://software.intel.com/en-us/articles/OpenVINO-Install-Linux) for more information about how to install and setup the Intel® Distribution of OpenVINO™ toolkit.
 
-You will need the OpenCL™ Runtime package if you plan to run inference on the GPU as shown by the
-instructions below. It is not mandatory for CPU inference.
+The software requires the installation of OpenCL™ Runtime package to run inference on the GPU, as indicated in the following instructions. It is not mandatory for CPU inference.
 
 ### Install Go
 
-You must install the Go programming language version 1.11+ in order to compile this application. You can obtain the latest compiler from the Go website's download page at https://golang.org/dl/
+Install the Go programming language version 1.11+ in order to compile this application. Obtain the latest compiler from the Go website's [download page.](https://golang.org/dl/)
 
-For an excellent introduction to the Go programming language, check out the online tour at https://tour.golang.org
+For an excellent introduction to the Go programming language, see the [online tour.](https://tour.golang.org)
 
-### Download the reference platform code using "go get"
+### Download the Reference Platform Code
 
-You can download the reference platform code onto your computer by using the following Go command:
+Download the reference platform code onto your computer by using the "go get" command:
 
 ```shell
 go get -d github.com/intel-iot-devkit/parking-lot-counter-go
 ```
 
-Then, change the current directory to where you have installed the application code to continue the installation steps:
+Change the current directory to the location where the application code is installed: 
 
 ```shell
 cd $GOPATH/src/github.com/intel-iot-devkit/parking-lot-counter-go
 ```
 
-### Install Dep
+### Install Dependency Tool
 
-This sample uses the `dep` dependency tool for Go. You can download and install it by running the following command:
+This sample uses the `dep` dependency tool for Go. Download and install the tool:
 
 ```shell
 make godep
@@ -71,7 +70,7 @@ make godep
 
 ### Install GoCV
 
-Once you have installed Go, you must also install the GoCV (https://gocv.io/) package which contains the Go programming language wrappers for OpenVINO, and the associated dependencies. The easiest way to do this is by using the `dep` tool, which will satisfy the program's dependencies as defined in `Gopkg.lock` file. Run the following make file task to do so:
+After installing Go, install the [GoCV package](https://gocv.io/) which contains the Go programming language wrappers for Intel® Distribution of OpenVINO™ toolkit and the associated dependencies. The `dep` tool satisfies the program's dependencies as defined in `Gopkg.lock` file. To run, use:
 
 ```shell
 make dep
@@ -79,15 +78,15 @@ make dep
 
 Now you should be ready to build and run the reference platform application code.
 
-## How it Works
+## How It Works
 
 The application uses a video source, such as a camera, to grab frames, and then uses a Deep Neural Network (DNNs) to process the data. The network detects vehicles in the frame, and then if successful it tracks the vehicles leaving and entering the parking area adjusting the counts of the vehicles in the parking area thus providing the information about the available parking spaces.
 
 The data can then optionally be sent to a MQTT machine to machine messaging server, as part of a parking space data analytics system.
 
-The DNN model used in this application is an Intel® optimized models that is part of the Intel® Distribution of OpenVINO™ toolkit.
+This application users DNN models optimized for Intel® architecture. These models are part of the Intel® Distribution of OpenVINO™ toolkit.
 
-You can find it here:
+Find it here:
 
 - `/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001`
 
@@ -99,44 +98,44 @@ The program creates three goroutines for concurrency:
 - Worker goroutine that processes video frames
 - Worker goroutine that publishes MQTT messages to remote server
 
-## Setting the Build Environment
+## Set the Build Environment
 
-You must configure the environment to use the Intel® Distribution of OpenVINO™ toolkit one time per session by running the following command:
+Configure the environment to use the Intel® Distribution of OpenVINO™ toolkit one time per session:
 
 ```shell
 source /opt/intel/computer_vision_sdk/bin/setupvars.sh
 ```
 
-## Building the Code
+## Build the Code
 
-Start by changing the current directory to wherever you have git cloned the application code. For example:
+Change the current directory to the location of the git-cloned application code. For example:
 
 ```shell
 cd $GOPATH/src/github.com/intel-iot-devkit/parking-lot-counter-go
 ```
 
-Before you can build the program you need to fetch its dependencies. You can do that by running the commands below. The first one fetches `Go` depedency manager of our choice and the latter uses it to satisfy the program's depdencies as defined in `Gopkg.lock` file:
+Before building the program, obtain its dependencies by running the commands below. The first one fetches `Go` depedency manager of our choice and the second uses it to satisfy the program's depdencies as defined in `Gopkg.lock` file:
 
 ```shell
 make godep
 make dep
 ```
 
-Once you have fetched the dependencies you must export a few environment variables required to build the library from the fetched dependencies. Run the following command from the project directory:
+After fetching dependencies, export a few environment variables required to build the library from the fetched dependencies. Run the  source command from the project directory:
 
 ```shell
 source vendor/gocv.io/x/gocv/openvino/env.sh
 ```
 
-Now you are ready to build the program binary. The project ships a simple `Makefile` which makes building the program easy by invoking the `build` task from the project root as follows:
+To build the program binary, the project ships a simple `Makefile`. Invoke the `build` task from the project root as follows:
 
 ```shell
 make build
 ```
 
-This commands creates a new directory called `build` in your current working directory and places the newly built binary called `counter` into it. Once the commands are finished, you should have built the `counter` application executable.
+This command creates a new directory called `build` in your current working directory and places the newly built binary called `counter` into it. Once the commands are finished, you should have built the `counter` application executable.
 
-## Running the Code
+## Run the Code
 
 To see a list of the various options:
 
@@ -150,7 +149,7 @@ To run the application with the needed model using the webcam:
 ./counter -model=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.bin -model-config=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.xml
 ```
 
-To control the position of the parking entrance/exit use the `-entrance, -e` command line flag, like this:
+To control the position of the parking entrance/exit, use the `-entrance, -e` command line flag, like this:
 
 ```shell
 ./counter -model=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.bin -model-config=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.xml -entrance="b"
@@ -163,11 +162,11 @@ The `-entrance` flag controls which part of the video stream frame is to be used
 * `"r"`: right
 * `"t"`: top
 
-To control the car detection DNN confidence level use the `-model-confidence` flag eg. `-model-confidence=0.6` will track all cars whose DNN detection confidence level is higher than `60%`.
+To control the car detection DNN confidence level use the `-model-confidence` flag (e.g., `-model-confidence=0.6` will track all cars whose DNN detection confidence level is higher than `60%`).
 
-The calculations made to track movement using centroids have two parameters that can be set via flags. `-max-dist` set the maximum distance in pixels between two related centroids. In other words how big of a distance of movement between frames show be allowed before assuming that the object is a different vehicle. `-max-gone` is the maximum number of frames to track a centroid which doesn't change, possibly due to being a parked vehicle.
+The calculations made to track movement using centroids have two parameters that can be set via flags. The`-max-dist` flag sets the maximum distance, the size of distance of movement between frames before assuming the object is a different vehicle, in pixels between two related centroids. The`-max-gone` flag sets the maximum number of frames to track a centroid which doesn't change, possibly due to being a parked vehicle.
 
-You can also use an erode filter to perform image cleanup before the DNN processing takes place. The `-filter=true` flag will turn on this feature.
+Use the erode filter flag, `-filter=true`,to perform image cleanup before the DNN processing takes place. 
 
 ### Hardware Acceleration
 
@@ -179,7 +178,7 @@ For example, to use the Intel® Distribution of OpenVINO™ toolkit backend with
 ./counter -model=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.bin -model-config=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP32/pedestrian-and-vehicle-detector-adas-0001.xml -backend=2 -target=1
 ```
 
-To run the code using 16-bit floats, you have to both set the `-t` flag to use the GPU in 16-bit mode, as well as use the FP16 version of the Intel® models:
+To run the code using 16-bit floats, set the `-t` flag to use the GPU in 16-bit mode, as well as use the FP16 version of the Intel® models:
 
 ```shell
 ./counter -model=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP16/pedestrian-and-vehicle-detector-adas-0001.bin -model-config=/opt/intel/computer_vision_sdk/deployment_tools/intel_models/pedestrian-and-vehicle-detector-adas-0001/FP16/pedestrian-and-vehicle-detector-adas-0001.xml -backend=2 -target=2
@@ -193,7 +192,7 @@ To run the code using the VPU, you have to set the `-target` flag to `3` and als
 
 ## Sample Videos
 
-There are several videos available to use as sample videos to show the capabilities of this application. You can download them by running these commands from the `parking-lot-counter-go` directory:
+There are several sample videos that can be used to demonstrate the capabilities of this application. Download them by running these commands from the `parking-lot-counter-go` directory:
 
 ```shell
 mkdir resources
@@ -213,7 +212,7 @@ The above command will use the top edge of the video stream frame as parking lot
 
 ## Machine to Machine Messaging with MQTT
 
-If you wish to use a MQTT server to publish data, you should set the following environment variables before running the program:
+If you wish to use a MQTT server to publish data, set the following environment variables before running the program:
 
 ```shell
 export MQTT_SERVER=tcp://localhost:1883
@@ -236,17 +235,18 @@ If you want to monitor the MQTT messages sent to your local server, and you have
 mosquitto_sub -t 'parking/counter'
 ```
 
-## Docker
+## Docker*
 
-You can also build a Docker image and then run the program in a Docker container. First you need to build the image. You can use the `Dockerfile` present in the cloned repository and build the Docker image.
+To use the reference implementatino with Docker*, build a Docker image and then run the program in a Docker container. Use the `Dockerfile` present in the cloned repository to build the Docker image.
 
-First you must obtain your own unique download URL for the Intel distribution of OpenVINO toolkit. Follow the registration process if you have not yet done so. In the registration email you have received a link to the Intel Registration Center website download page, shown here:
+Follow the registration process for the Intel® Distribution of OpenVINO™ toolkit to obtain a unique download URL. A registration email  will be sent. It contains a link to the Intel Registration Center website download page, shown here:
 
 ![OpenVINO download page](./images/openvino-download.png)
 
-First, navigate to the download page using the link you have received. On the download page, use the "Choose Product to Download" selection box and select "Intel Distribution of OpenVINO toolkit for Linux". Next, using the "Choose a Version" selection box, select "2018 R5". The "Choose a Download Option" section should appear. Right click on the button "Full Package" and choose "Copy Link Address". Your clipboard should now contain your unique OpenVINO download URL. Save this URL somewhere safe.
+Navigate to the download page using the link. On the download page, use the "Choose Product to Download" selection box and select "Intel® Distribution of OpenVINO™ toolkit for Linux*". Next, using the "Choose a Version" selection box, select "2018 R5". The "Choose a Download Option" section should appear. Right click on the button "Full Package" and choose "Copy Link Address". The clipboard should now contain a unique download URL. Save this URL somewhere safe.
 
-Now you can build your unique Docker image by running the following command, substituting the actual URL you obtained in the previous step:
+
+Now build a unique Docker image by running the following command, substituting the actual URL obtained in the previous step:
 
 ```shell
 docker build -t parking-lot-counter-go --build-arg OPENVINO_DOWNLOAD_URL=[your unique OpenVINO download URL here] .
@@ -258,7 +258,7 @@ This will produce a docker image called `parking-lot-counter-go` which contains 
 docker run -it --rm parking-lot-counter-go -h
 ```
 
-To run the docker image on an Ubuntu host machine using an attached camera, run the following commands:
+To run the Docker image on an Ubuntu host machine using an attached camera, use:
 
 ```shell
 xhost +local:docker
@@ -266,7 +266,7 @@ docker run --device=/dev/video0:/dev/video0 -v /tmp/.X11-unix:/tmp/.X11-unix -e 
 xhost -local:docker
 ```
 
-To run the docker image on an Ubuntu host machine using a file input, run the following commands:
+To run the Docker image on an Ubuntu host machine using a file input, use:
 
 ```shell
 xhost +local:docker
@@ -274,6 +274,9 @@ docker run -v ${PWD}/resources:/resources -v /tmp/.X11-unix:/tmp/.X11-unix -e DI
 xhost -local:docker
 ```
 
-## Microsoft Azure
+## Microsoft Azure*
 
-If you'd like to know how you can take advantage of more advanced build system provided by [Microsoft Azure Cloud](https://azure.microsoft.com/), please check out the Azure guide [here](./azure.md). Following the steps in the guide you can build a Docker container and push it into Azure Container Registry to make it available online.
+To take advantage of a more advanced build system provided by [Microsoft Azure Cloud](https://azure.microsoft.com/), see the Azure guide [here](./azure.md). Following the steps in the guide to build a Docker container and push it into Azure Container Registry to make it available online.
+
+## Related Reference Implementations
+[Parking Lot Counter CPP](https://github.com/intel-iot-devkit/parking-lot-counter-cpp)
