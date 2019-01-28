@@ -33,7 +33,7 @@ uname -a
 
 ## Setup
 
-### InstallIntel® Distribution of OpenVINO™ toolkit
+### Install the Intel® Distribution of OpenVINO™ toolkit
 
 Refer to [Install the Intel® Distribution of OpenVINO™ toolkit for Linux*](https://software.intel.com/en-us/articles/OpenVINO-Install-Linux) for more information about how to install and setup the Intel® Distribution of OpenVINO™ toolkit.
 
